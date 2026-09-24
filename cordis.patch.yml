@@ -1,0 +1,50 @@
+# dsh bundle patch —— 由 profile 的 `dsh.profile.bundles` 层栈加载。
+#
+# 层序（`dsh-app-boot:loadProfileDirectory` 的契约）：
+#   [各 bundle 的补丁，按 bundles 顺序] → profile 自己的 cordis.patch.yml → home patch → --patch 叠加
+# 本文件在最底层，所以用户的 profile 补丁可以覆盖下面任何一行。
+#
+# 补丁语义（`cordis-plugin-include:applyEntryPatches` 原文）：
+#   - 按 `entry.id` 命中；
+#   - 命中后对 overrides 的每个键做**顶层整体替换**（`target[key] = value`），不是深合并 ——
+#     因此给一行补字段时必须把它的 config 写全；
+#   - `name` 是**断言**而非匹配键：写了却不一致就 warn + 跳过（这正是我们要的保险）；
+#   - 命中不到只 warn，不报错。
+
+- insert:
+    - id: study-alongwith-ai
+      name: 'dsh-study-alongwith-ai'
+      config:
+        # 教学协议住在伴学模式自己的 persona 里（presets/study/agent.cordis.yml），
+        # 所以宿主级挂载默认**不**注入协议：其他模式拿到工具，但不会被伴学口吻污染。
+        protocol: false
+        command: true
+
+# 让「伴学模式」出现在模式选择器里。
+#
+# 官方 `agent-presets` 的 Config 是：
+#   { default: string(必填), roots: [{ path, trust }], includeShippedRoot, includeUserRoot }
+# `roots` 是**部署级附加根**，夹在 shipped(system) 与 ~/.dsh/.agent-presets(user) 之间，
+# 同 id 先到先得。bundle 本身就是一层部署，所以用它发布 preset 比往用户目录塞一份副本更正确：
+# `trust: system` 表示"随包发布的、只读的"，也不会被 preset 面板的删除动作删掉。
+#
+# `path` 必须是绝对路径（agent-presets 内部是 `resolve(expandHomePath(path))`，
+# 相对路径会落到 process.cwd()），而 bundle 的安装位置不固定。所以这里用 loader 的
+# `!!js` 表达式在求值时算出来：
+#   - `!!js` 由 `new Function("ctx","expr","with (ctx) { return eval(expr) }")` 求值，
+#     作用域是 loader ctx，因此 `baseUrl` 可用（= profile 目录的 file URL，由 include
+#     以 `new URL('.', pathToFileURL(<profile>/cordis.yml))` 设定）；
+#   - `process` 是全局，同样可用（官方 shipped preset 就在用 `process.platform`）。
+# 表达式**永不抛错**：任何异常都退化成 `roots: []`，即"没有伴学模式"，而不是让整行
+# agent-presets 加载失败、把标准模式一起带走。
+#
+# 已知权衡：config 是整体替换，`default` 又是必填，所以这里必须原样写回 `standard`。
+# 若你的部署曾把该行的 default 改成别的模式，安装本 bundle 会把它改回 standard。
+# （用户实际选择的默认模式存在 settings 命名空间 `agent-presets` 里，不受影响。）
+- id: agent-presets
+  name: '@deepseek-ai/dsh-agent-presets'
+  config:
+    default: standard
+    includeShippedRoot: true
+    includeUserRoot: true
+    roots: !!js "(() => { try { const p = decodeURIComponent(new URL('node_modules/dsh-study-alongwith-ai/presets/', baseUrl).pathname); return [{ path: process.platform === 'win32' ? p.slice(1) : p, trust: 'system' }]; } catch (error) { return []; } })()"

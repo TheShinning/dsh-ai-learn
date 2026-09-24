@@ -1,0 +1,21 @@
+# 开发模式接线脚本会创建（指向 DSH profile 的 junction），本机专有，不要提交
+node_modules/
+
+# 测试与验证脚本写出的临时目录
+.scratch/
+.dsh-ingest-tests/
+
+# 编辑器与本机杂物
+.DS_Store
+Thumbs.db
+*.log
+
+# ── lib/ 是**故意纳入版本库**的（2026-09-26 决定，实测依据如下）─────────────
+# `.gitignore` 里曾经忽略 lib/。但"从 git 安装"要能成立，只有两条路：
+#   ① 靠 `prepare` 脚本在安装时构建 —— 需要使用者先把**带提交哈希的完整规格**
+#      加进 profile 的 `onlyBuiltDependencies`（pnpm v10 默认禁止构建脚本；
+#      `@*` 通配被拒："Use exact versions only"）→ **每次升级换 sha 都要重新批准**；
+#   ② 直接把构建产物 `lib/` 提交进仓库 → **装下来即可用，零额外配置、升级无摩擦**。
+# 本包很小、构建是纯类型剥离（`node:module.stripTypeScriptTypes`），②的代价远低于①的摩擦，
+# 因此选择②。`prepare` 脚本保留：它在本地开发与 npm 发布路线下仍然有用。
+# 发布前检查清单里有一条"lib/ 必须与源码同步"，见 scripts/verify-build.mjs。

@@ -1,0 +1,18 @@
+{
+  "name": "@dsh-study/ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "多格式摄取实现层：Markdown/txt/HTML 解析、PDF 分层提取（内置文本层 → pdftotext → pdftoppm+tesseract）、docx/odt/epub（零依赖 ZIP 读取）、图像原生视觉读取。零 npm 依赖，只用 node 内置模块。",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none \"tests/*.test.ts\""
+  }
+}

@@ -1,0 +1,70 @@
+# 苏格拉底教学模式（socratic）—— 一步步启发式引导的 agent 组合。
+#
+# 设计要点（与 presets/study/agent.cordis.yml 同构，只换人格；文件头不做长篇重复，差异如下）
+#
+# 1. **人格承载教学协议**。人的记忆与理解靠"自己想出来"，不靠被讲一遍；所以本模式的默认动作是提问。
+#    协议写进 persona（静态文本，进前缀），逐步指令则由宿主插件的 `study_steps` 工具每轮给出。
+# 2. **工具面同样收窄**：只保留读材料 + 技能 + 压缩 + ask_user，不挂 shell / 子代理 / 工作流 / plan-mode。
+# 3. **本模式**不**重复挂 `dsh-study-alongwith-ai`**：它由 bundle 补丁在宿主级挂载（`protocol: false`），
+#    所以 `study_steps` / `study_formats` / `study_progress` 等工具在所有模式都可用，
+#    而教学协议只出现在各自 preset 的人格里。重复挂同一个 id 会导致挂载两次（本项目踩过的坑）。
+#    这一条由 `scripts/verify-preset.mjs` 强制检查。
+# 4. **技能随 preset 走**：`skills/socratic-tutor/SKILL.md` 就在本目录下，与官方 cordis preset 同构；
+#    同样不写 `customSkillDirs`（那个键依赖未证实的求值作用域，赌错会把整个模式带走）。
+#
+# 注意：本文件是**顶层条目列表**（cordis loader patch），不是带键的映射 ——
+# 展示元数据因此放在同目录的 preset.yml 里。
+
+# —— 人格：苏格拉底教学协议 ——
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: >-
+      你是苏格拉底式的导师：用提问带学生自己想出答案，而不是把答案讲给他听。
+      先锁定一份材料并判别它的类型（条例 / 教材 / 讲义 / 真题 / 答案解析 / 文章），类型判不准就先问一句，不要猜着教。
+      一次只推进一个知识点、一次只问一个问题；问之前先说清你为什么问这个。
+      讲不讲答案由证据决定，不由你的判断决定：每轮先调用 study_steps 拿到环节与动作，
+      只有它给出 may_reveal_answer=true 时才可以直接讲授；其余情况只能给台阶（例子、反例、缩小范围、二选一）。
+      六环节流程：定向（选焦点）→ 追问 → 降阶 → 直讲与复述 → 测试 → 收束与复习；每次只做当前环节的一件事。
+      学生答不上来：降阶优先于加压，先给具体例子，再缩成二选一，不要重复原来的抽象问法，也不要直接给答案。
+      深度到 3 或连续两次困惑：直接讲最小正确模型，然后必须让学生用自己的话复述；复述不通过就停在这里，不要出题、不要推进。
+      学生说「懂了」不算证据：点亮一个知识点需要至少两种不同的正向证据（例如一次自主复述 + 一次小测答对）。
+      按材料类型换教法：条例问适用条件与例外情形、教材问概念解决什么问题与换场景是否成立、
+      真题让学生先自答再判对错并把错误归因到概念/记忆/迁移/审题、文章问主张与证据支持到哪一步、答案解析反推出题人想考什么。
+      每讲完一个点到收束时，先问要不要记笔记与建复习卡，再插入到期复习（到期卡优先于开新点）。
+      低压力：允许不会、允许跳过、允许暂停；用「下一步入口」代替「任务失败」，不用分数羞辱学生。
+      进度、掌握度与复习排期都由 study_* 工具维护；不要凭印象声称学生已经掌握，也不要手工改掌握度。
+      到阶段性收束时，可以调用 study_wrap_up 留一份课堂记录：学了什么、卡在哪、下一步做什么。
+
+# —— 读材料 ——
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    # **必填**（`z.boolean().required()`，无默认值）。不写会让切换模式直接失败：
+    #   invalid config: $.sampleOverCapGlobResults missing required value
+    sampleOverCapGlobResults: false
+
+# —— 技能随 preset 发布（与官方 cordis preset 同构，不写 config）——
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# —— 长会话需要压缩；一节苏格拉底式课堂往往几十分钟 ——
+- id: compaction
+  name: cordis:group
+  group: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+
+# —— 让学生能中途提问/确认（低压力原则需要"可以暂停"的落点）——
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'

@@ -1,0 +1,18 @@
+{
+  "name": "@dsh-study/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "伴学域逻辑核心：零依赖纯函数层（会话机 / 活动机 / 知识图谱 / 教学法 / SRS / 摄取接口 / 成长统计）。",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*"
+  },
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test --test-isolation=none \"tests/*.test.ts\""
+  }
+}

@@ -1,0 +1,84 @@
+# 伴学模式（study）—— 一对一导师陪读的 agent 组合。
+#
+# 设计要点
+#
+# 1. **人格承载教学协议**。preset 的 persona 是"这个模式是什么"的正式位置；
+#    把教学协议写进 prefix 而不是塞进用户消息，是原系统 `/learn` 前缀劫持那一课的直接产物
+#    （详见 packages/plugin-host/src/prompt.ts 的模块注释）。
+# 2. **工具面收窄**。只保留"读材料"与"伴学"，不挂 shell / 子代理 / 工作流 / plan-mode：
+#    一个陪读会话不需要代码执行权，工具越少模型越不容易跑偏，审批面也越小。
+# 3. **伴学工具来自宿主级挂载**（本包的 bundle 补丁 `cordis.patch.yml` 插入
+#    `study-alongwith-ai` 一行，配置 `protocol: false`），所以工具在任何模式都可用，
+#    而**教学协议只在本 preset 的人格里出现**。
+#    若你希望工具也只在本模式出现，把下面注释的那两行打开、并把 bundle 补丁里的插入行
+#    注释掉即可 —— 注意两处都开会导致同一个 id 被挂载两次。
+# 4. **技能随 preset 走**。`skills/study-companion/SKILL.md` 就在本目录下，与官方
+#    `cordis` preset 的 `presets/cordis/skills/` 完全同构。官方那个同样自带技能却
+#    **一个 config 都不写**，所以这里也不写 `customSkillDirs`：那个键确实存在于
+#    `dsh-skill-filesystem` 的 Config，但它的值会被 `resolve()`（相对 process.cwd()），
+#    且需要 `baseUrl` 在组成文件行里可用 —— 这一点没有先例可依；一旦 `!!js` 求值抛错，
+#    整行加载失败会把伴学模式一起带走。宁可少写一行，也不赌一个未证实的求值作用域。
+#
+# 注意：本文件是**顶层条目列表**（cordis loader patch），不是带键的映射 ——
+# 展示元数据因此放在同目录的 preset.yml 里。
+
+# —— 人格：教学协议 ——
+- id: persona
+  name: '@deepseek-ai/dsh-persona'
+  config:
+    prefix: >-
+      你是一位一对一导师，陪用户读一份材料。工作方式由系统状态驱动，不靠自觉遵守一段文字。
+      一次只推进一个点：每轮只留一个主问题，不要整章铺开。先问后讲：优先用一个关键问题确认用户当前的理解位置。
+      以证据判断，不以表态判断：用户说「懂了」不构成证据；点亮一个知识点需要多元证据（例如一次自主复述加一次练习）。
+      降阶优先于加压：用户卡住时先给反例、缩小范围或换生活场景，不要提高抽象度。
+      教材是锚点不是讲义：一轮最多引用一处原文，且必须服务于用户刚才的判断。
+      把知识挂到旧知识上：推进新概念时说明它与已有节点是先修、对照、易混还是实例关系。
+      错误是教学输入：先分辨是概念混淆、记忆遗忘、迁移失败、审题偏差还是未作答，再决定怎么追问。
+      收束必须征得同意：到阶段性收束时先问用户要不要课堂笔记与复习卡，不要自动生成。
+      全程低压力：允许不会、允许跳过、允许暂停；用「下一步入口」代替「任务失败」。
+      掌握度、复习排期与教材身份都由 study_* 工具维护；不要凭印象声称用户已经掌握，也不要手工改掌握度。
+
+# —— 读材料 ——
+- id: tool-fs
+  name: '@deepseek-ai/dsh-tool-fs'
+
+- id: tool-fs-search
+  name: '@deepseek-ai/dsh-tool-fs-search'
+  config:
+    # **必填**：该包 Config 是 `z.boolean().required()`，没有默认值。
+    # 不写会在切换模式时报错并让整个模式加载失败：
+    #   failed to apply loader entry tool-fs-search: invalid config:
+    #   $.sampleOverCapGlobResults missing required value
+    # 取 false = 结果超上限时返回**前 N 条**（保持本模式原有的直读行为）。
+    sampleOverCapGlobResults: false
+
+# —— 伴学技能随 preset 发布 ——
+# 不写 config：与官方 cordis preset 一致（见文件头第 4 点）。
+# 技能的可见性由 preset 挂载机制决定；本 preset 与官方同构，因此行为也一致。
+- id: skill-filesystem
+  name: '@deepseek-ai/dsh-skill-filesystem'
+
+- id: tool-skill
+  name: '@deepseek-ai/dsh-tool-skill'
+
+# —— 若要让伴学工具也只在本模式出现，打开下面两行，并从 profile 的 cordis.patch.yml 里删除该条目 ——
+# - id: study-alongwith-ai
+#   name: 'dsh-study-alongwith-ai'
+#   config:
+#     protocol: true
+#     command: true
+
+# —— 长会话需要压缩；伴学往往一节课几十分钟 ——
+- id: compaction
+  name: cordis:group
+  group: true
+  config:
+    - id: compaction-basic
+      name: '@deepseek-ai/dsh-compaction-basic'
+
+    - id: tool-result-pruner
+      name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
+
+# —— 让学生能中途提问/确认（低压力原则需要"可以暂停"的落点）——
+- id: tool-ask-user
+  name: '@deepseek-ai/dsh-tool-ask-user'
